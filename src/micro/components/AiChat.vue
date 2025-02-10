@@ -8,17 +8,17 @@
     <!-- Chat Window (scrollable) -->
     <div class="flex-1 p-4 space-y-3 overflow-y-auto" ref="chatWindow">
       <div
-        v-for="(message, index) in messages"
+        v-for="(message, index) in filteredMessages"
         :key="index"
-        :class="['flex', message.isUser ? 'justify-end' : 'justify-start']"
+        :class="['flex', isUserMessage(message) ? 'justify-end' : 'justify-start']"
       >
         <div
           :class="[
             'max-w-[80%] break-words rounded-2xl p-3',
-            message.isUser ? 'bg-teal-500 text-white' : 'bg-gray-50 text-gray-800 border',
+            isUserMessage(message) ? 'bg-teal-500 text-white' : 'bg-gray-50 text-gray-800 border',
           ]"
         >
-          <div v-if="message.isUser">{{ message.content }}</div>
+          <div v-if="isUserMessage(message)">{{ message.content }}</div>
           <div v-else class="markdown-content" v-html="formatMessage(message.content)"></div>
         </div>
       </div>
@@ -63,14 +63,21 @@
 
 <script setup lang="ts">
 import { $transF } from 'app_alegra_commons/translate'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { completions } from '../api/completions'
 import { marked } from 'marked'
 import { SButton, SInput } from '@alegradev/smile-ui-next'
 
-type ChatMessage = {
+interface ChatMessage {
   content: string
-  isUser: boolean
+  role: 'user' | 'assistant' | 'system'
 }
+
+const filteredMessages = computed(() => {
+  return messages.value.filter(message => message.role !== 'system')
+})
+
+const isUserMessage = (message: ChatMessage) => message.role === 'user'
 
 marked.setOptions({
   headerIds: false,
@@ -96,18 +103,13 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    const mockResponse = `Recibí tu mensaje: "${trimmedInput}"\n\nEste es un ejemplo de respuesta que pueden personalizar durante el workshop.`
-
-    messages.value.push({
-      content: mockResponse,
-      isUser: false,
-    })
+    const response = await completions(messages.value)
+    messages.value.push(response.data.message)
   } catch (error) {
+    console.error(error)
     messages.value.push({
       content: 'Lo siento, ha ocurrido un error. Por favor, intenta nuevamente.',
-      isUser: false,
+      role: 'assistant',
     })
   } finally {
     isLoading.value = false
@@ -125,6 +127,9 @@ const scrollToBottom = () => {
 
 const formatMessage = (content: string) => {
   try {
+    content = content.replace(/<think>([\s\S]*?)<\/think>/g, (match, text) => {
+      return text.trim() ? `<div class="think-content">${text}</div>` : ''
+    })
     return marked(content)
   } catch (error) {
     return content
@@ -140,6 +145,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.markdown-content :deep(.think-content) {
+  background-color: #f8f9fa;
+  border-left: 4px solid #6366f1;
+  padding: 0.5rem 1rem;
+  margin: 0.5rem 0;
+  font-style: italic;
+  color: #4b5563;
+}
+
 .markdown-content :deep(h3) {
   font-size: 1.1em;
   font-weight: 600;
