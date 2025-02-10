@@ -8,7 +8,10 @@ export class CompletionsController {
     try {
       // const aiRepository = new DeepSeekRepository()
       const aiRepository = new OpenAIRepository()
-      const completionsApplication = new CompletionsApplication(aiRepository)
+      const completionsApplication = new CompletionsApplication(
+        aiRepository,
+        req.headers.authorization || ''
+      )
 
       const { messages } = req.body
 
